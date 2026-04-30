@@ -134,6 +134,62 @@ print(len(vec))  # usually 512
 
 ------------------------------------------------------------------------
 
+# এই CLIP embedding কোডটা API বানাতে গেলে মূলত ৩টা জিনিস লাগবে:
+- Server framework (API বানানোর জন্য)
+- Endpoint (route/controller)
+- Image receive + embedding return logic
+## ✅ FastAPI দিয়ে API বানানো (BEST & MODERN)
+## Install dependency
+```bash
+pip install fastapi uvicorn python-multipart torch clip-by-openai pillow
+```
+## 🚀 API কোড
+```python
+from fastapi import FastAPI, UploadFile, File
+import torch
+import clip
+from PIL import Image
+import io
+
+app = FastAPI()
+
+device = "cpu"
+model, preprocess = clip.load("ViT-B/32", device=device)
+
+
+def get_embedding_from_image(image: Image.Image):
+    image = image.convert("RGB")
+
+    img1 = preprocess(image).unsqueeze(0).to(device)
+    img2 = preprocess(image.resize((256, 256))).unsqueeze(0).to(device)
+
+    with torch.no_grad():
+        v1 = model.encode_image(img1)
+        v2 = model.encode_image(img2)
+
+    v1 = v1 / v1.norm(dim=-1, keepdim=True)
+    v2 = v2 / v2.norm(dim=-1, keepdim=True)
+
+    feature_vector = (v1 + v2) / 2
+
+    return feature_vector.squeeze().tolist()
+
+
+@app.post("/embed-image")
+async def embed_image(file: UploadFile = File(...)):
+    image_bytes = await file.read()
+    image = Image.open(io.BytesIO(image_bytes))
+
+    vector = get_embedding_from_image(image)
+
+    return {
+        "embedding": vector,
+        "dimension": len(vector)
+    }
+```
+------------------------------------------------------------------------
+
+
 ## 🔥 Feature Vector দিয়ে কী কী করা যায়?
 
 ### ✔ Similarity Search
