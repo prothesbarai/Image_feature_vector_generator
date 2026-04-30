@@ -1,18 +1,27 @@
-# pip install torch
-# pip install git+https://github.com/openai/CLIP.git
+from fastapi import FastAPI, UploadFile, File
 import torch
 import clip
 from PIL import Image
+import io
+
+from starlette.middleware.cors import CORSMiddleware
+
+app = FastAPI()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 device = "cpu"
-
 model, preprocess = clip.load("ViT-B/32", device=device)
 
 
-def get_embedding(image_path):
-    image = Image.open(image_path).convert("RGB")
+def get_embedding_from_image(image: Image.Image):
+    image = image.convert("RGB")
 
-    # multi-crop (power trick)
     img1 = preprocess(image).unsqueeze(0).to(device)
     img2 = preprocess(image.resize((256, 256))).unsqueeze(0).to(device)
 
@@ -20,18 +29,24 @@ def get_embedding(image_path):
         v1 = model.encode_image(img1)
         v2 = model.encode_image(img2)
 
-    # normalize
     v1 = v1 / v1.norm(dim=-1, keepdim=True)
     v2 = v2 / v2.norm(dim=-1, keepdim=True)
 
-    # final powerful vector
     feature_vector = (v1 + v2) / 2
 
     return feature_vector.squeeze().tolist()
 
 
-# Here Image Url Path
-vec = get_embedding("C:/Users/Prothes/Desktop/visual_search_features/visual_search_backend_go/uploads/search/red_shirt_2.jpg")
-print(vec)
-print(len(vec))  # usually 512
+@app.post("/embed-image")
+async def embed_image(file: UploadFile = File(...)):
+    if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
+        return {"error": "Only image files allowed"}
 
+    image_bytes = await file.read()
+    image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    vector = get_embedding_from_image(image)
+
+    return {
+        "embedding": vector,
+        "dimension": len(vector)
+    }
