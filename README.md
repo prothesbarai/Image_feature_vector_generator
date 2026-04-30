@@ -188,6 +188,18 @@ async def embed_image(file: UploadFile = File(...)):
     }
 ```
 ------------------------------------------------------------------------
+# Need ✅ requirements.txt
+```bash
+fastapi
+uvicorn
+torch
+ftfy
+regex
+tqdm
+pillow
+git+https://github.com/openai/CLIP.git
+```
+------------------------------------------------------------------------
 
 
 ## 🔥 Feature Vector দিয়ে কী কী করা যায়?
