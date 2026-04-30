@@ -167,8 +167,8 @@ Feature vector = AI এর চোখ 👁️\
 
 ## ❤️ Tips
 
--   Normalization ব্যবহার করো
--   Multi-image embedding নাও
+-   Normalization ব্যবহার
+-   Multi-image embedding
 -   FAISS use করলে speed বাড়বে
 ------------------------------------------------------------------------
 
