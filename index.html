@@ -1,115 +1,267 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CLIP Image Vector Tool</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Vector Studio</title>
 
-    <style>
-        body {
-            font-family: Arial;
-            text-align: center;
-            padding: 30px;
-            background: #f5f5f5;
-        }
+<style>
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Segoe UI", sans-serif;
+}
 
-        h2 {
-            color: #333;
-        }
+body {
+    min-height: 100vh;
+    background: radial-gradient(circle at top, #0f172a, #020617);
+    color: white;
+    overflow-x: hidden;
+}
 
-        input, button {
-            margin: 10px;
-            padding: 10px;
-        }
+/* Animated background glow */
+.bg {
+    position: fixed;
+    width: 100%;
+    height: 100%;
+    background: radial-gradient(circle at 20% 20%, #38bdf8 0%, transparent 40%),
+                radial-gradient(circle at 80% 80%, #22c55e 0%, transparent 40%);
+    filter: blur(80px);
+    opacity: 0.25;
+    animation: float 8s ease-in-out infinite alternate;
+    z-index: -1;
+}
 
-        button {
-            cursor: pointer;
-            background: #007bff;
-            color: white;
-            border: none;
-            border-radius: 5px;
-        }
+@keyframes float {
+    from { transform: translateY(0px); }
+    to { transform: translateY(30px); }
+}
 
-        button:hover {
-            background: #0056b3;
-        }
+.container {
+    max-width: 900px;
+    margin: 60px auto;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    padding: 20px;
+}
 
-        pre {
-            text-align: left;
-            background: #222;
-            color: #0f0;
-            padding: 15px;
-            overflow: auto;
-            max-height: 300px;
-        }
-    </style>
+/* Glass cards */
+.card {
+    background: rgba(255,255,255,0.06);
+    backdrop-filter: blur(18px);
+    border-radius: 20px;
+    padding: 20px;
+    box-shadow: 0 0 30px rgba(0,0,0,0.5);
+    transition: 0.3s;
+}
+
+.card:hover {
+    transform: translateY(-5px);
+}
+
+/* Drop zone */
+.drop {
+    border: 2px dashed rgba(255,255,255,0.3);
+    padding: 40px;
+    border-radius: 15px;
+    cursor: pointer;
+    transition: 0.3s;
+}
+
+.drop:hover {
+    border-color: #38bdf8;
+    background: rgba(56,189,248,0.05);
+}
+
+input {
+    display: none;
+}
+
+button {
+    margin-top: 15px;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 10px;
+    cursor: pointer;
+    font-weight: bold;
+    transition: 0.3s;
+}
+
+.primary {
+    background: linear-gradient(90deg,#38bdf8,#22c55e);
+    color: black;
+}
+
+.primary:hover {
+    transform: scale(1.05);
+}
+
+/* Image preview */
+img {
+    max-width: 100%;
+    border-radius: 15px;
+    margin-top: 10px;
+}
+
+/* Output */
+pre {
+    background: rgba(0,0,0,0.5);
+    padding: 15px;
+    border-radius: 15px;
+    max-height: 300px;
+    overflow: auto;
+}
+
+/* Loader */
+.overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.7);
+    display: none;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+}
+
+.bar {
+    width: 200px;
+    height: 6px;
+    background: #334155;
+    border-radius: 10px;
+    overflow: hidden;
+    margin-top: 10px;
+}
+
+.fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg,#38bdf8,#22c55e);
+    animation: load 2s infinite;
+}
+
+@keyframes load {
+    0% { width: 0%; }
+    50% { width: 70%; }
+    100% { width: 100%; }
+}
+
+/* Toast */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #22c55e;
+    padding: 10px 20px;
+    border-radius: 10px;
+    display: none;
+}
+
+.title {
+    text-align: center;
+    margin-top: 30px;
+    font-size: 26px;
+    font-weight: bold;
+    background: linear-gradient(90deg,#38bdf8,#22c55e);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+}
+
+.footer {
+    text-align: center;
+    margin-top: 30px;
+    opacity: 0.5;
+    font-size: 13px;
+}
+</style>
 </head>
 
 <body>
 
-    <h2>Upload Image & Get Vector 🚀</h2>
+<div class="bg"></div>
 
-    <input type="file" id="fileInput" accept="image/*" />
-    <br>
+<div class="title">AI VECTOR STUDIO</div>
 
-    <button onclick="uploadImage()">Get Vector</button>
-    <button onclick="copyVector()">Copy Vector</button>
+<div class="container">
 
-    <h3>Output:</h3>
-    <pre id="output">No data yet...</pre>
+    <!-- Upload -->
+    <div class="card">
+        <div class="drop" onclick="document.getElementById('file').click()">
+            Drop or Click Image
+            <input type="file" id="file" accept="image/*">
+        </div>
 
-    <script>
-        let currentVector = [];
+        <button class="primary" onclick="upload()">Generate Vector</button>
 
-        async function uploadImage() {
-            const fileInput = document.getElementById("fileInput");
-            const file = fileInput.files[0];
+        <img id="preview" style="display:none">
+    </div>
 
-            if (!file) {
-                alert("Please select an image!");
-                return;
-            }
+    <!-- Result -->
+    <div class="card">
+        <h3>Result</h3>
+        <pre id="output">No data yet...</pre>
 
-            const formData = new FormData();
-            formData.append("file", file);
+        <button class="primary" onclick="copy()">Copy Vector</button>
+    </div>
 
-            try {
-                document.getElementById("output").innerText = "Processing... ⏳";
+</div>
 
-                const response = await fetch("https://image-feature-vector-generator.onrender.com/embed-image", {
-                    method: "POST",
-                    body: formData
-                });
+<!-- Loader -->
+<div class="overlay" id="loader">
+    <div>Processing AI Model...</div>
+    <div class="bar"><div class="fill"></div></div>
+</div>
 
-                const data = await response.json();
+<div class="toast" id="toast">Copied!</div>
 
-                if (data.error) {
-                    document.getElementById("output").innerText = data.error;
-                    return;
-                }
+<div class="footer">
+    Developed by Engr Prothes Barai
+</div>
 
-                currentVector = data.embedding;
+<script>
+let vector = [];
 
-                document.getElementById("output").innerText =
-                    JSON.stringify(data.embedding, null, 2);
+async function upload() {
+    const file = document.getElementById("file").files[0];
 
-            } catch (error) {
-                console.error(error);
-                document.getElementById("output").innerText =
-                    "Error: " + error.message;
-            }
-        }
+    if (!file) return alert("Select image");
 
-        function copyVector() {
-            if (currentVector.length === 0) {
-                alert("No vector to copy!");
-                return;
-            }
+    document.getElementById("preview").src = URL.createObjectURL(file);
+    document.getElementById("preview").style.display = "block";
 
-            navigator.clipboard.writeText(JSON.stringify(currentVector));
-            alert("Vector copied! ✅");
-        }
-    </script>
+    document.getElementById("loader").style.display = "flex";
+
+    const form = new FormData();
+    form.append("file", file);
+
+    const res = await fetch("https://image-feature-vector-generator.onrender.com/embed-image", {
+        method: "POST",
+        body: form
+    });
+
+    const data = await res.json();
+
+    vector = data.embedding;
+
+    document.getElementById("output").innerText =
+        JSON.stringify(vector, null, 2);
+
+    document.getElementById("loader").style.display = "none";
+}
+
+function copy() {
+    if (!vector.length) return;
+
+    navigator.clipboard.writeText(JSON.stringify(vector));
+
+    let t = document.getElementById("toast");
+    t.style.display = "block";
+
+    setTimeout(() => t.style.display = "none", 1200);
+}
+</script>
 
 </body>
 </html>
