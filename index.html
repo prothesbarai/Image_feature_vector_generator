@@ -202,10 +202,18 @@
 
         <!-- Upload -->
         <div class="card">
-            <div class="drop" onclick="document.getElementById('file').click()">
+            
+            <!-- <div class="drop" onclick="document.getElementById('file').click()">
                 Drop or Click Image
                 <input type="file" id="file" accept="image/*">
+            </div> -->
+            <div class="drop" onclick="document.getElementById('file').click()">
+                <div id="dropText">Drop or Click Image</div>
+                <small id="fileName" style="opacity:0.7;"></small>
+                <input type="file" id="file" accept="image/*">
             </div>
+
+            
 
             <button class="primary" onclick="upload()">Generate Vector</button>
 
@@ -253,6 +261,22 @@ async function warmup() {
     }
 }
 
+
+document.getElementById("file").addEventListener("change", function () {
+    const file = this.files[0];
+
+    if (!file) return;
+
+    // show filename
+    document.getElementById("dropText").innerText = "Selected File:";
+    document.getElementById("fileName").innerText = file.name;
+
+    // preview image (already আছে কিন্তু safe version)
+    const preview = document.getElementById("preview");
+    preview.src = URL.createObjectURL(file);
+    preview.style.display = "block";
+});
+        
 
 // =========================
 // 🚀 UPLOAD FUNCTION (FIXED)
