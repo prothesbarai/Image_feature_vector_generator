@@ -41,7 +41,7 @@ def load_clip():
         import clip
 
         clip_model, clip_preprocess = clip.load(
-            "ViT-B/32",
+            "ViT-B/16",
             device=device
         )
 
@@ -90,7 +90,7 @@ def get_embedding(image: Image.Image):
 def home():
     return {
         "status": "RUNNING 🚀",
-        "model": "CLIP ViT-B/32 stable mode",
+        "model": "CLIP ViT-B/16 stable mode",
         "memory": "512MB optimized"
     }
 
