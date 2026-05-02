@@ -2,9 +2,8 @@ from fastapi import FastAPI, UploadFile, File
 from PIL import Image
 import io
 import torch
-import clip
+from torchvision import models, transforms
 import gc
-import os
 
 from starlette.middleware.cors import CORSMiddleware
 
@@ -24,59 +23,47 @@ app.add_middleware(
 device = "cpu"
 
 model = None
-preprocess = None
-
 
 # =========================
-# 🔥 FORCE LOW MEMORY MODE
-# =========================
-os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
-torch.set_num_threads(1)  # IMPORTANT for 512MB CPU apps
-
-
-# =========================
-# 🔥 LOAD MODEL (LAZY + SAFE)
+# 🔥 LOAD MODEL (VERY LIGHTWEIGHT ~10–15MB)
 # =========================
 def load_model():
-    global model, preprocess
+    global model
 
     if model is None:
-        # RN50 = lighter than ViT-B/32
-        model, preprocess = clip.load("RN50", device="cpu")
-
+        model = models.mobilenet_v3_small(weights="DEFAULT")
+        model.classifier = torch.nn.Identity()  # remove classifier → feature vector
         model.eval()
 
-        # extra memory optimization
-        for p in model.parameters():
-            p.requires_grad = False
-
-    return model, preprocess
+    return model
 
 
 # =========================
-# 🔥 IMAGE PREPROCESS SAFE
+# IMAGE TRANSFORM
 # =========================
-def get_embedding_from_image(image: Image.Image):
-    model, preprocess = load_model()
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+])
 
-    # 🔥 reduce memory usage aggressively
+
+# =========================
+# EMBEDDING FUNCTION
+# =========================
+def get_embedding(image: Image.Image):
+    model = load_model()
+
     image = image.convert("RGB")
-    image = image.resize((224, 224))  # critical for 512MB
-
-    img = preprocess(image).unsqueeze(0).to("cpu")
+    img = transform(image).unsqueeze(0)
 
     with torch.no_grad():
-        vector = model.encode_image(img)
+        vec = model(img).squeeze()
 
-        # normalize (CLIP standard)
-        vector = vector / vector.norm(dim=-1, keepdim=True)
+    result = vec.flatten().tolist()
 
-    # move back to CPU + free GPU-like buffers
-    result = vector.squeeze().cpu().tolist()
-
-    # 🔥 memory cleanup (VERY IMPORTANT on Render)
+    # memory cleanup (important for 512MB)
     del img
-    del vector
+    del vec
     gc.collect()
 
     return result
@@ -89,7 +76,7 @@ def get_embedding_from_image(image: Image.Image):
 def home():
     return {
         "status": "API is running 🚀",
-        "model": "CLIP RN50 (512MB optimized)"
+        "model": "MobileNetV3-Small (30MB alternative to CLIP)"
     }
 
 
@@ -104,19 +91,15 @@ async def embed_image(file: UploadFile = File(...)):
 
     try:
         image_bytes = await file.read()
-
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        vector = get_embedding_from_image(image)
+        vector = get_embedding(image)
 
         return {
             "embedding": vector,
             "dimension": len(vector),
-            "status": "success"
+            "model": "mobilenet_v3_small"
         }
 
     except Exception as e:
-        return {
-            "error": str(e),
-            "status": "failed"
-        }
+        return {"error": str(e)}

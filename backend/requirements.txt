@@ -3,8 +3,6 @@ uvicorn
 pillow
 python-multipart
 
-git+https://github.com/openai/CLIP.git
-
 torch==2.11.0+cpu
 torchvision==0.26.0+cpu
 --extra-index-url https://download.pytorch.org/whl/cpu
