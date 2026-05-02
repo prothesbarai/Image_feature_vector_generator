@@ -4,6 +4,7 @@ import io
 import torch
 import clip
 import gc
+import os
 
 from starlette.middleware.cors import CORSMiddleware
 
@@ -27,22 +28,32 @@ preprocess = None
 
 
 # =========================
-# 🔥 LOAD MODEL ON STARTUP (IMPORTANT FIX)
+# 🔥 IMPORTANT: MEMORY OPTIMIZATION FLAGS
 # =========================
-@app.on_event("startup")
-def startup():
+os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+
+
+# =========================
+# 🔥 LOAD MODEL (LAZY + SAFE)
+# =========================
+def load_model():
     global model, preprocess
-    model, preprocess = clip.load("RN50", device="cpu")
-    model.eval()
+
+    if model is None:
+        model, preprocess = clip.load("RN50", device="cpu")
+        model.eval()
+
+    return model, preprocess
 
 
 # =========================
-# 🔥 SAFE EMBEDDING FUNCTION
+# 🔥 IMAGE EMBEDDING (512MB SAFE)
 # =========================
 def get_embedding_from_image(image: Image.Image):
-    image = image.convert("RGB")
+    model, preprocess = load_model()
 
-    # resize to reduce memory spike (IMPORTANT for 512MB)
+    # reduce memory usage
+    image = image.convert("RGB")
     image = image.resize((224, 224))
 
     img = preprocess(image).unsqueeze(0).to("cpu")
@@ -53,7 +64,7 @@ def get_embedding_from_image(image: Image.Image):
     # normalize
     vector = vector / vector.norm(dim=-1, keepdim=True)
 
-    # memory cleanup
+    # cleanup memory
     del img
     gc.collect()
 
@@ -65,7 +76,10 @@ def get_embedding_from_image(image: Image.Image):
 # =========================
 @app.get("/")
 def home():
-    return {"status": "API is running 🚀"}
+    return {
+        "status": "API is running 🚀",
+        "model": "RN50 (lazy loaded)"
+    }
 
 
 # =========================
@@ -74,6 +88,7 @@ def home():
 @app.post("/embed-image")
 async def embed_image(file: UploadFile = File(...)):
 
+    # validate file type
     if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
         return {"error": "Only image files allowed"}
 
