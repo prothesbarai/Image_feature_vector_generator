@@ -28,9 +28,10 @@ preprocess = None
 
 
 # =========================
-# 🔥 IMPORTANT: MEMORY OPTIMIZATION FLAGS
+# 🔥 FORCE LOW MEMORY MODE
 # =========================
 os.environ["PYTORCH_NO_CUDA_MEMORY_CACHING"] = "1"
+torch.set_num_threads(1)  # IMPORTANT for 512MB CPU apps
 
 
 # =========================
@@ -40,35 +41,45 @@ def load_model():
     global model, preprocess
 
     if model is None:
+        # RN50 = lighter than ViT-B/32
         model, preprocess = clip.load("RN50", device="cpu")
+
         model.eval()
+
+        # extra memory optimization
+        for p in model.parameters():
+            p.requires_grad = False
 
     return model, preprocess
 
 
 # =========================
-# 🔥 IMAGE EMBEDDING (512MB SAFE)
+# 🔥 IMAGE PREPROCESS SAFE
 # =========================
 def get_embedding_from_image(image: Image.Image):
     model, preprocess = load_model()
 
-    # reduce memory usage
+    # 🔥 reduce memory usage aggressively
     image = image.convert("RGB")
-    image = image.resize((224, 224))
+    image = image.resize((224, 224))  # critical for 512MB
 
     img = preprocess(image).unsqueeze(0).to("cpu")
 
     with torch.no_grad():
-        vector = model.encode_image(img).cpu()
+        vector = model.encode_image(img)
 
-    # normalize
-    vector = vector / vector.norm(dim=-1, keepdim=True)
+        # normalize (CLIP standard)
+        vector = vector / vector.norm(dim=-1, keepdim=True)
 
-    # cleanup memory
+    # move back to CPU + free GPU-like buffers
+    result = vector.squeeze().cpu().tolist()
+
+    # 🔥 memory cleanup (VERY IMPORTANT on Render)
     del img
+    del vector
     gc.collect()
 
-    return vector.squeeze().tolist()
+    return result
 
 
 # =========================
@@ -78,30 +89,34 @@ def get_embedding_from_image(image: Image.Image):
 def home():
     return {
         "status": "API is running 🚀",
-        "model": "RN50 (lazy loaded)"
+        "model": "CLIP RN50 (512MB optimized)"
     }
 
 
 # =========================
-# IMAGE API
+# IMAGE VECTOR API
 # =========================
 @app.post("/embed-image")
 async def embed_image(file: UploadFile = File(...)):
 
-    # validate file type
     if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
         return {"error": "Only image files allowed"}
 
     try:
         image_bytes = await file.read()
+
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
         vector = get_embedding_from_image(image)
 
         return {
             "embedding": vector,
-            "dimension": len(vector)
+            "dimension": len(vector),
+            "status": "success"
         }
 
     except Exception as e:
-        return {"error": str(e)}
+        return {
+            "error": str(e),
+            "status": "failed"
+        }
