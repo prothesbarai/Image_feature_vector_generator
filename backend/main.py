@@ -16,7 +16,8 @@ app.add_middleware(
 )
 
 device = "cpu"
-model, preprocess = clip.load("ViT-B/32", device=device)
+#model, preprocess = clip.load("ViT-B/32", device=device)
+model, preprocess = clip.load("RN50", device=device)
 
 
 def get_embedding_from_image(image: Image.Image):
