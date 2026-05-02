@@ -1,44 +1,38 @@
 # =========================
 # 📦 IMPORTS
 # =========================
-from fastapi import FastAPI, UploadFile, File  # API framework
-from PIL import Image  # image processing
-import io  # byte stream handling
-import torch  # ML tensor operations
-import gc  # garbage collection (memory cleanup)
+from fastapi import FastAPI, UploadFile, File
+from PIL import Image
+import io
+import torch
+import gc
 
-from starlette.middleware.cors import CORSMiddleware  # allow frontend calls
+from starlette.middleware.cors import CORSMiddleware
 
 # =========================
-# 🚀 FASTAPI APP
+# 🚀 APP
 # =========================
 app = FastAPI()
 
-# =========================
-# 🌐 CORS SETUP (frontend access allow)
-# =========================
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # allow all frontend domains
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# =========================
-# ⚙️ DEVICE SETTING (CPU only for Render free tier)
-# =========================
 device = "cpu"
 
 # =========================
-# 🤖 GLOBAL CLIP MODEL VARIABLES (lazy loading)
+# 🤖 GLOBAL MODEL (KEEP ALIVE)
 # =========================
-clip_model = None  # CLIP model stored here after first load
-clip_preprocess = None  # image preprocessing pipeline
+clip_model = None
+clip_preprocess = None
 
 
 # =========================
-# 📥 LOAD CLIP MODEL (only when needed)
+# 📥 LOAD ONCE ONLY (IMPORTANT FIX)
 # =========================
 def load_clip():
     global clip_model, clip_preprocess
@@ -48,9 +42,10 @@ def load_clip():
 
         clip_model, clip_preprocess = clip.load(
             "ViT-B/32",
-            device="cpu"
+            device=device
         )
 
+        # 🔥 memory optimization
         clip_model = clip_model.half()
         clip_model.eval()
 
@@ -60,110 +55,66 @@ def load_clip():
 
 
 # =========================
-# 🧠 EMBEDDING GENERATION FUNCTION
+# 🧠 EMBEDDING (OPTIMIZED FOR STABILITY)
 # =========================
 def get_embedding(image: Image.Image):
 
-    # load model (lazy)
     model, preprocess = load_clip()
 
-    # convert image to RGB (safe format)
     image = image.convert("RGB")
 
     # =========================
-    # 🔥 MULTI-CROP TECHNIQUE (accuracy boost)
+    # ⚡ SIMPLE SINGLE-CROP (IMPORTANT FIX)
     # =========================
+    img = preprocess(image).unsqueeze(0)
 
-    # normal resized image
-    img1 = preprocess(image).unsqueeze(0)
-
-    # zoomed version (captures more detail)
-    img2 = preprocess(image.resize((256, 256))).unsqueeze(0)
-
-    # =========================
-    # 🚀 MODEL INFERENCE (no gradient = faster + less RAM)
-    # =========================
     with torch.no_grad():
+        vec = model.encode_image(img)
 
-        # encode image → vector representation
-        v1 = model.encode_image(img1)
-        v2 = model.encode_image(img2)
+    # normalize
+    vec = vec / vec.norm(dim=-1, keepdim=True)
 
-    # =========================
-    # 📏 NORMALIZATION (important for cosine similarity)
-    # =========================
-    v1 = v1 / v1.norm(dim=-1, keepdim=True)
-    v2 = v2 / v2.norm(dim=-1, keepdim=True)
-
-    # =========================
-    # 🔥 FINAL VECTOR (average of both crops)
-    # =========================
-    vec = (v1 + v2) / 2
-
-    # convert tensor → python list (for JSON response)
     result = vec.squeeze().tolist()
 
-    # =========================
-    # 🧹 MEMORY CLEANUP (VERY IMPORTANT for 512MB)
-    # =========================
-    del img1, img2, v1, v2, vec  # remove variables
-    gc.collect()  # force free RAM
-
-    # unload model to prevent memory leak
-    unload_clip()
+    # cleanup only temp tensors
+    del img, vec
+    gc.collect()
 
     return result
 
 
 # =========================
-# 🏠 HEALTH CHECK API
+# 🏠 HEALTH CHECK
 # =========================
 @app.get("/")
 def home():
     return {
-        "status": "API is running 🚀",  # server status
-        "model": "CLIP ViT-B/32 (optimized multi-crop version)",  # model info
-        "memory": "optimized for 512MB RAM"
+        "status": "RUNNING 🚀",
+        "model": "CLIP ViT-B/32 stable mode",
+        "memory": "512MB optimized"
     }
 
 
 # =========================
-# 📤 IMAGE VECTOR API
+# 📤 API
 # =========================
 @app.post("/embed-image")
 async def embed_image(file: UploadFile = File(...)):
 
-    # =========================
-    # ❌ FILE VALIDATION
-    # =========================
     if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
         return {"error": "Only image files allowed"}
 
     try:
-        # =========================
-        # 📥 READ IMAGE FROM REQUEST
-        # =========================
-        image_bytes = await file.read()  # read raw bytes
-
-        # convert bytes → image
+        image_bytes = await file.read()
         image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        # =========================
-        # 🧠 GENERATE VECTOR
-        # =========================
         vector = get_embedding(image)
 
-        # =========================
-        # 📤 RESPONSE TO FRONTEND
-        # =========================
         return {
-            "embedding": vector,  # final vector output
-            "dimension": len(vector),  # usually 512
-            "model": "clip-vit-b32-multicrop-optimized"
+            "embedding": vector,
+            "dimension": len(vector),
+            "model": "clip-stable-512mb"
         }
 
     except Exception as e:
-        # =========================
-        # ❌ ERROR HANDLING
-        # =========================
         return {"error": str(e)}
