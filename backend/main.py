@@ -43,35 +43,20 @@ clip_preprocess = None  # image preprocessing pipeline
 def load_clip():
     global clip_model, clip_preprocess
 
-    # যদি model আগে load না হয়ে থাকে
     if clip_model is None:
-        import clip  # OpenAI CLIP model import
+        import clip
 
-        # load model (ViT-B/32 = balanced speed + accuracy)
-        clip_model, clip_preprocess = clip.load("ViT-B/32", device=device)
+        clip_model, clip_preprocess = clip.load(
+            "ViT-B/32",
+            device="cpu"
+        )
 
-        # 🔥 memory optimization: float16 conversion
         clip_model = clip_model.half()
-
-        # evaluation mode (no training)
         clip_model.eval()
 
-        # CPU optimization (avoid thread overload)
         torch.set_num_threads(1)
 
     return clip_model, clip_preprocess
-
-
-# =========================
-# 🧹 UNLOAD CLIP (RAM free করার জন্য)
-# =========================
-def unload_clip():
-    global clip_model, clip_preprocess
-
-    clip_model = None  # remove model from memory
-    clip_preprocess = None  # remove preprocessing pipeline
-
-    gc.collect()  # force memory cleanup
 
 
 # =========================
