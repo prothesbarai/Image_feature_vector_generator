@@ -239,85 +239,134 @@
     <script>
         let vector = [];
 
-        async function upload() {
-            const file = document.getElementById("file").files[0];
+// =========================
+// 🔥 AUTO WARMUP (IMPORTANT)
+// =========================
+async function warmup() {
+    try {
+        await fetch("https://image-feature-vector-generator.onrender.com/", {
+            method: "GET"
+        });
+    } catch (e) {
+        console.log("warmup failed but ok");
+    }
+}
 
-            if (!file) {
-                alert("Select image");
-                return;
+
+// =========================
+// 🚀 UPLOAD FUNCTION (FIXED)
+// =========================
+async function upload() {
+
+    const file = document.getElementById("file").files[0];
+
+    if (!file) {
+        alert("Select image");
+        return;
+    }
+
+    // preview
+    document.getElementById("preview").src = URL.createObjectURL(file);
+    document.getElementById("preview").style.display = "block";
+
+    document.getElementById("loader").style.display = "flex";
+
+    const form = new FormData();
+    form.append("file", file);
+
+    const controller = new AbortController();
+
+    // ⏱️ timeout increased (Render slow)
+    const timeout = setTimeout(() => controller.abort(), 180000);
+
+    try {
+
+        // =========================
+        // 🔥 MAIN API CALL
+        // =========================
+        const res = await fetch(
+            "https://image-feature-vector-generator.onrender.com/embed-image",
+            {
+                method: "POST",
+                body: form,
+                signal: controller.signal
             }
+        );
 
-            // Preview image
-            document.getElementById("preview").src = URL.createObjectURL(file);
-            document.getElementById("preview").style.display = "block";
+        clearTimeout(timeout);
 
-            // Show loader
-            document.getElementById("loader").style.display = "flex";
+        // ❌ check response
+        if (!res.ok) {
+            throw new Error("Server Error: " + res.status);
+        }
 
-            const form = new FormData();
-            form.append("file", file);
-            // =========================
-            // ⏱️ TIMEOUT CONTROLLER
-            // =========================
-            const controller = new AbortController();
-            const timeout = setTimeout(() => controller.abort(), 120000);
+        const data = await res.json();
 
-            try {
-                // =========================
-                // 🔥 API CALL (SAFE VERSION)
-                // =========================
-                const res = await fetch("https://image-feature-vector-generator.onrender.com/embed-image", {
+        if (!data || data.error) {
+            throw new Error(data?.error || "Invalid response");
+        }
+
+        vector = data.embedding || [];
+
+        document.getElementById("output").innerText =
+            JSON.stringify(vector, null, 2);
+
+    } catch (err) {
+
+        console.error(err);
+
+        // =========================
+        // 🔥 AUTO RETRY (IMPORTANT FIX)
+        // =========================
+        document.getElementById("output").innerText =
+            "❌ Retry request...";
+
+        try {
+            const retry = await fetch(
+                "https://image-feature-vector-generator.onrender.com/embed-image",
+                {
                     method: "POST",
-                    body: form,
-                    signal: controller.signal
-                });
-
-                clearTimeout(timeout);
-
-                // =========================
-                // ❌ ERROR CHECK (IMPORTANT)
-                // =========================
-                if (!res.ok) {
-                    const text = await res.text();
-                    throw new Error(`Server Error ${res.status}: ${text}`);
+                    body: form
                 }
+            );
 
-                const data = await res.json();
+            const data = await retry.json();
+            vector = data.embedding || [];
 
-                if (!data || data.error) {
-                    throw new Error(data?.error || "Invalid response from server");
-                }
+            document.getElementById("output").innerText =
+                JSON.stringify(vector, null, 2);
 
-                vector = data.embedding || [];
-
-                document.getElementById("output").innerText =
-                    JSON.stringify(vector, null, 2);
-
-            } catch (err) {
-                console.error(err);
-
-                document.getElementById("output").innerText =
-                    "❌ Error: " + err.message;
-
-                vector = [];
-
-            } finally {
-                clearTimeout(timeout);
-
-                document.getElementById("loader").style.display = "none";
-            }
+        } catch (e2) {
+            document.getElementById("output").innerText =
+                "❌ Server not responding. Try again later.";
         }
 
-        function copy() {
-            if (!vector.length) return;
+    } finally {
+        clearTimeout(timeout);
+        document.getElementById("loader").style.display = "none";
+    }
+}
 
-            navigator.clipboard.writeText(JSON.stringify(vector));
 
-            let t = document.getElementById("toast");
-            t.style.display = "block";
+// =========================
+// 📋 COPY VECTOR
+// =========================
+function copy() {
+    if (!vector.length) return;
 
-            setTimeout(() => t.style.display = "none", 1200);
-        }
+    navigator.clipboard.writeText(JSON.stringify(vector));
+
+    let t = document.getElementById("toast");
+    t.style.display = "block";
+
+    setTimeout(() => t.style.display = "none", 1200);
+}
+
+
+// =========================
+// 🚀 AUTO WARM SERVER ON LOAD
+// =========================
+warmup();
     </script>
 
 </body>
