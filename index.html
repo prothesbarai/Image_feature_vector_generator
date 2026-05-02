@@ -226,29 +226,66 @@ let vector = [];
 async function upload() {
     const file = document.getElementById("file").files[0];
 
-    if (!file) return alert("Select image");
+    if (!file) {
+        alert("Select image");
+        return;
+    }
 
+    // Preview image
     document.getElementById("preview").src = URL.createObjectURL(file);
     document.getElementById("preview").style.display = "block";
 
+    // Show loader
     document.getElementById("loader").style.display = "flex";
 
     const form = new FormData();
     form.append("file", file);
 
-    const res = await fetch("https://image-feature-vector-generator.onrender.com/embed-image", {
-        method: "POST",
-        body: form
-    });
+    try {
+        // =========================
+        // 🔥 API CALL SECTION
+        // =========================
+        const res = await fetch("https://image-feature-vector-generator.onrender.com/embed-image", {
+            method: "POST",
+            body: form
+        });
 
-    const data = await res.json();
+        // If server error
+        if (!res.ok) {
+            throw new Error("Server Error: " + res.status);
+        }
 
-    vector = data.embedding;
+        const data = await res.json();
 
-    document.getElementById("output").innerText =
-        JSON.stringify(vector, null, 2);
+        // API validation
+        if (!data || data.error) {
+            throw new Error(data?.error || "Invalid response from server");
+        }
 
-    document.getElementById("loader").style.display = "none";
+        // Save vector safely
+        vector = data.embedding || [];
+
+        // Show result
+        document.getElementById("output").innerText =
+            JSON.stringify(vector, null, 2);
+
+    } catch (err) {
+        // =========================
+        // ❌ ERROR HANDLING SECTION
+        // =========================
+        console.error("Upload Error:", err);
+
+        document.getElementById("output").innerText =
+            "❌ Error: " + err.message;
+
+        vector = [];
+
+    } finally {
+        // =========================
+        // 🎯 UI CLEANUP SECTION
+        // =========================
+        document.getElementById("loader").style.display = "none";
+    }
 }
 
 function copy() {
