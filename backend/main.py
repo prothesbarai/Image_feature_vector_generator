@@ -1,18 +1,17 @@
-# =========================
-# 📦 IMPORTS
-# =========================
 from fastapi import FastAPI, UploadFile, File
-from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import torch
-import threading
+from torchvision import models, transforms
+import gc
 
-# =========================
-# 🚀 APP
-# =========================
+from starlette.middleware.cors import CORSMiddleware
+
 app = FastAPI()
 
+# =========================
+# CORS
+# =========================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -23,90 +22,84 @@ app.add_middleware(
 
 device = "cpu"
 
-# =========================
-# 🤖 GLOBAL MODEL (LAZY LOAD ONLY)
-# =========================
 model = None
-preprocess = None
-
-# 🔥 prevent parallel crash (IMPORTANT FOR RENDER)
-lock = threading.Lock()
-
 
 # =========================
-# 📥 LOAD MODEL ONLY WHEN NEEDED
+# 🔥 LOAD MODEL (VERY LIGHTWEIGHT ~10–15MB)
 # =========================
-def load_clip():
-    global model, preprocess
+def load_model():
+    global model
 
     if model is None:
-        import clip
-
-        model, preprocess = clip.load(
-            "ViT-B/16",
-            device=device
-        )
-
+        model = models.mobilenet_v3_small(weights="DEFAULT")
+        model.classifier = torch.nn.Identity()  # remove classifier → feature vector
         model.eval()
-        torch.set_num_threads(1)
+
+    return model
 
 
 # =========================
-# 🧠 EMBEDDING FUNCTION
+# IMAGE TRANSFORM
+# =========================
+transform = transforms.Compose([
+    transforms.Resize((224, 224)),
+    transforms.ToTensor(),
+])
+
+
+# =========================
+# EMBEDDING FUNCTION
 # =========================
 def get_embedding(image: Image.Image):
-
-    load_clip()
+    model = load_model()
 
     image = image.convert("RGB")
-
-    # ⚡ single safe crop (NO MEMORY SPIKE)
-    img = preprocess(image).unsqueeze(0)
+    img = transform(image).unsqueeze(0)
 
     with torch.no_grad():
-        vec = model.encode_image(img)
+        vec = model(img).squeeze()
 
-    # normalize (cosine similarity ready)
-    vec = vec / vec.norm(dim=-1, keepdim=True)
+    result = vec.flatten().tolist()
 
-    return vec.squeeze().tolist()
+    # memory cleanup (important for 512MB)
+    del img
+    del vec
+    gc.collect()
+
+    return result
 
 
 # =========================
-# 🏠 HEALTH CHECK
+# HEALTH CHECK
 # =========================
 @app.get("/")
 def home():
     return {
-        "status": "RUNNING 🚀",
-        "model": "CLIP ViT-B/16 LAZY LOAD STABLE",
-        "ram": "512MB safe mode"
+        "status": "API is running 🚀",
+        "model": "MobileNetV3-Small (30MB alternative to CLIP)"
     }
 
 
 # =========================
-# 📤 IMAGE VECTOR API
+# IMAGE VECTOR API
 # =========================
 @app.post("/embed-image")
 async def embed_image(file: UploadFile = File(...)):
 
-    # 🔥 lock prevents parallel memory crash
-    with lock:
+    if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
+        return {"error": "Only image files allowed"}
 
-        if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
-            return {"error": "Only images allowed"}
+    try:
+        image_bytes = await file.read()
+        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        try:
-            image_bytes = await file.read()
-            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        vector = get_embedding(image)
 
-            vector = get_embedding(image)
+        return {
+            "embedding": vector,
+            "dimension": len(vector),
+            "model": "mobilenet_v3_small"
+        }
 
-            return {
-                "embedding": vector,
-                "dimension": len(vector),
-                "model": "clip-vi16-lazy-safe"
-            }
-
-        except Exception as e:
-            return {"error": str(e)}
+    except Exception as e:
+        return {"error": str(e)}
