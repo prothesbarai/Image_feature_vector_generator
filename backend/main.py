@@ -2,12 +2,10 @@
 # 📦 IMPORTS
 # =========================
 from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import torch
-import gc
-
-from starlette.middleware.cors import CORSMiddleware
 
 # =========================
 # 🚀 APP
@@ -25,14 +23,14 @@ app.add_middleware(
 device = "cpu"
 
 # =========================
-# 🤖 GLOBAL MODEL (KEEP ALIVE)
+# 🤖 GLOBAL MODEL
 # =========================
 clip_model = None
 clip_preprocess = None
 
 
 # =========================
-# 📥 LOAD ONCE ONLY (IMPORTANT FIX)
+# 📥 LOAD ONCE (CRITICAL FIX)
 # =========================
 def load_clip():
     global clip_model, clip_preprocess
@@ -45,17 +43,14 @@ def load_clip():
             device=device
         )
 
-        # 🔥 memory optimization
-        clip_model = clip_model.half()
         clip_model.eval()
-
         torch.set_num_threads(1)
 
     return clip_model, clip_preprocess
 
 
 # =========================
-# 🧠 EMBEDDING (OPTIMIZED FOR STABILITY)
+# 🧠 EMBEDDING (DOUBLE CROP + SAFE)
 # =========================
 def get_embedding(image: Image.Image):
 
@@ -64,34 +59,37 @@ def get_embedding(image: Image.Image):
     image = image.convert("RGB")
 
     # =========================
-    # ⚡ SIMPLE SINGLE-CROP (IMPORTANT FIX)
+    # ⚡ SAFE DOUBLE CROP (OPTIMIZED)
     # =========================
-    img = preprocess(image).unsqueeze(0)
+
+    img1 = preprocess(image).unsqueeze(0)
+    img2 = preprocess(image.resize((224, 224))).unsqueeze(0)
 
     with torch.no_grad():
-        vec = model.encode_image(img)
+        v1 = model.encode_image(img1)
+        v2 = model.encode_image(img2)
 
     # normalize
-    vec = vec / vec.norm(dim=-1, keepdim=True)
+    v1 = v1 / v1.norm(dim=-1, keepdim=True)
+    v2 = v2 / v2.norm(dim=-1, keepdim=True)
+
+    # weighted merge (important for accuracy)
+    vec = (v1 * 0.6) + (v2 * 0.4)
 
     result = vec.squeeze().tolist()
-
-    # cleanup only temp tensors
-    del img, vec
-    gc.collect()
 
     return result
 
 
 # =========================
-# 🏠 HEALTH CHECK
+# 🏠 HEALTH
 # =========================
 @app.get("/")
 def home():
     return {
         "status": "RUNNING 🚀",
-        "model": "CLIP ViT-B/16 stable mode",
-        "memory": "512MB optimized"
+        "model": "CLIP ViT-B/16 DOUBLE-CROP SAFE",
+        "ram": "512MB optimized"
     }
 
 
@@ -102,7 +100,7 @@ def home():
 async def embed_image(file: UploadFile = File(...)):
 
     if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
-        return {"error": "Only image files allowed"}
+        return {"error": "Only images allowed"}
 
     try:
         image_bytes = await file.read()
@@ -113,7 +111,7 @@ async def embed_image(file: UploadFile = File(...)):
         return {
             "embedding": vector,
             "dimension": len(vector),
-            "model": "clip-stable-512mb"
+            "model": "clip-double-crop-safe"
         }
 
     except Exception as e:
