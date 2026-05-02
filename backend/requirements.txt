@@ -4,14 +4,14 @@ pillow
 python-multipart
 
 # =========================
-# 🧠 PyTorch (CPU ONLY - Render friendly)
+# 🧠 PYTORCH (Render supported versions only)
 # =========================
-torch==2.1.0+cpu
-torchvision==0.16.0+cpu
+torch==2.11.0+cpu
+torchvision==0.26.0+cpu
 
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 # =========================
-# 🤖 CLIP (OpenAI model)
+# 🤖 CLIP
 # =========================
 git+https://github.com/openai/CLIP.git
