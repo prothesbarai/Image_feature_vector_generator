@@ -24,7 +24,8 @@ preprocess = None
 def load_model():
     global model, preprocess
     if model is None:
-        model, preprocess = clip.load("RN50", device=device)
+        model, preprocess = clip.load("RN50", device="cpu")
+        model.eval()
     return model, preprocess
 
 
@@ -35,7 +36,7 @@ def get_embedding_from_image(image: Image.Image):
     img = preprocess(image).unsqueeze(0).to(device)
 
     with torch.no_grad():
-        vector = model.encode_image(img)
+        vector = model.encode_image(img).cpu()
 
     vector = vector / vector.norm(dim=-1, keepdim=True)
 
