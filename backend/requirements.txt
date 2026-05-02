@@ -1,6 +1,8 @@
 fastapi
 uvicorn
 pillow
+python-multipart
+
 git+https://github.com/openai/CLIP.git
 
 torch==2.11.0+cpu
