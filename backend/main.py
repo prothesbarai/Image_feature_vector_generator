@@ -9,7 +9,9 @@ from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
+# =========================
 # CORS
+# =========================
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,23 +27,24 @@ preprocess = None
 
 
 # =========================
-# 🔥 LAZY LOAD MODEL (512MB SAFE)
+# 🔥 LOAD MODEL ON STARTUP (IMPORTANT FIX)
 # =========================
-def load_model():
+@app.on_event("startup")
+def startup():
     global model, preprocess
-    if model is None:
-        model, preprocess = clip.load("RN50", device="cpu")
-        model.eval()
-    return model, preprocess
+    model, preprocess = clip.load("RN50", device="cpu")
+    model.eval()
 
 
 # =========================
-# 🔥 EMBEDDING FUNCTION (OPTIMIZED)
+# 🔥 SAFE EMBEDDING FUNCTION
 # =========================
 def get_embedding_from_image(image: Image.Image):
-    model, preprocess = load_model()
-
     image = image.convert("RGB")
+
+    # resize to reduce memory spike (IMPORTANT for 512MB)
+    image = image.resize((224, 224))
+
     img = preprocess(image).unsqueeze(0).to("cpu")
 
     with torch.no_grad():
@@ -50,7 +53,7 @@ def get_embedding_from_image(image: Image.Image):
     # normalize
     vector = vector / vector.norm(dim=-1, keepdim=True)
 
-    # cleanup memory (IMPORTANT for 512MB)
+    # memory cleanup
     del img
     gc.collect()
 
