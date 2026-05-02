@@ -3,13 +3,13 @@ from PIL import Image
 import io
 import torch
 import clip
-import os
+import gc
 
 from starlette.middleware.cors import CORSMiddleware
 
 app = FastAPI()
 
-# CORS (OK for frontend)
+# CORS
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -25,31 +25,36 @@ preprocess = None
 
 
 # =========================
-# 🔥 LAZY MODEL LOADING
+# 🔥 LAZY LOAD MODEL (512MB SAFE)
 # =========================
 def load_model():
     global model, preprocess
     if model is None:
         model, preprocess = clip.load("RN50", device="cpu")
-        model.eval()  # IMPORTANT for inference
+        model.eval()
     return model, preprocess
 
 
 # =========================
-# 🔥 IMAGE EMBEDDING
+# 🔥 EMBEDDING FUNCTION (OPTIMIZED)
 # =========================
 def get_embedding_from_image(image: Image.Image):
     model, preprocess = load_model()
 
     image = image.convert("RGB")
-    img = preprocess(image).unsqueeze(0).to(device)
+    img = preprocess(image).unsqueeze(0).to("cpu")
 
     with torch.no_grad():
         vector = model.encode_image(img).cpu()
 
+    # normalize
     vector = vector / vector.norm(dim=-1, keepdim=True)
 
-    return vector.squeeze().cpu().tolist()
+    # cleanup memory (IMPORTANT for 512MB)
+    del img
+    gc.collect()
+
+    return vector.squeeze().tolist()
 
 
 # =========================
