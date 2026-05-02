@@ -1,10 +1,16 @@
+# =========================
+# 📦 IMPORTS
+# =========================
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import torch
-import clip
+import threading
 
+# =========================
+# 🚀 APP
+# =========================
 app = FastAPI()
 
 app.add_middleware(
@@ -18,30 +24,49 @@ app.add_middleware(
 device = "cpu"
 
 # =========================
-# 🚀 LOAD MODEL ON START (CRITICAL FIX)
+# 🤖 GLOBAL MODEL (LAZY LOAD ONLY)
 # =========================
-clip_model, clip_preprocess = clip.load(
-    "ViT-B/16",
-    device=device
-)
+model = None
+preprocess = None
 
-clip_model.eval()
-torch.set_num_threads(1)
+# 🔥 prevent parallel crash (IMPORTANT FOR RENDER)
+lock = threading.Lock()
 
 
 # =========================
-# 🧠 SIMPLE SAFE EMBEDDING
+# 📥 LOAD MODEL ONLY WHEN NEEDED
+# =========================
+def load_clip():
+    global model, preprocess
+
+    if model is None:
+        import clip
+
+        model, preprocess = clip.load(
+            "ViT-B/16",
+            device=device
+        )
+
+        model.eval()
+        torch.set_num_threads(1)
+
+
+# =========================
+# 🧠 EMBEDDING FUNCTION
 # =========================
 def get_embedding(image: Image.Image):
 
+    load_clip()
+
     image = image.convert("RGB")
 
-    # ⚡ ONLY ONE CROP (IMPORTANT FOR STABILITY)
-    img = clip_preprocess(image).unsqueeze(0)
+    # ⚡ single safe crop (NO MEMORY SPIKE)
+    img = preprocess(image).unsqueeze(0)
 
     with torch.no_grad():
-        vec = clip_model.encode_image(img)
+        vec = model.encode_image(img)
 
+    # normalize (cosine similarity ready)
     vec = vec / vec.norm(dim=-1, keepdim=True)
 
     return vec.squeeze().tolist()
@@ -54,31 +79,34 @@ def get_embedding(image: Image.Image):
 def home():
     return {
         "status": "RUNNING 🚀",
-        "model": "CLIP ViT-B/16 STABLE MODE",
-        "note": "optimized for Render 512MB"
+        "model": "CLIP ViT-B/16 LAZY LOAD STABLE",
+        "ram": "512MB safe mode"
     }
 
 
 # =========================
-# 📤 API
+# 📤 IMAGE VECTOR API
 # =========================
 @app.post("/embed-image")
 async def embed_image(file: UploadFile = File(...)):
 
-    if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
-        return {"error": "Only images allowed"}
+    # 🔥 lock prevents parallel memory crash
+    with lock:
 
-    try:
-        image_bytes = await file.read()
-        image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+        if file.content_type not in ["image/png", "image/jpeg", "image/jpg"]:
+            return {"error": "Only images allowed"}
 
-        vector = get_embedding(image)
+        try:
+            image_bytes = await file.read()
+            image = Image.open(io.BytesIO(image_bytes)).convert("RGB")
 
-        return {
-            "embedding": vector,
-            "dimension": len(vector),
-            "model": "clip-stable-render"
-        }
+            vector = get_embedding(image)
 
-    except Exception as e:
-        return {"error": str(e)}
+            return {
+                "embedding": vector,
+                "dimension": len(vector),
+                "model": "clip-vi16-lazy-safe"
+            }
+
+        except Exception as e:
+            return {"error": str(e)}
