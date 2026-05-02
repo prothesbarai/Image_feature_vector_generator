@@ -1,15 +1,10 @@
-# =========================
-# 📦 IMPORTS
-# =========================
 from fastapi import FastAPI, UploadFile, File
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 import io
 import torch
+import clip
 
-# =========================
-# 🚀 APP
-# =========================
 app = FastAPI()
 
 app.add_middleware(
@@ -23,73 +18,44 @@ app.add_middleware(
 device = "cpu"
 
 # =========================
-# 🤖 GLOBAL MODEL
+# 🚀 LOAD MODEL ON START (CRITICAL FIX)
 # =========================
-clip_model = None
-clip_preprocess = None
+clip_model, clip_preprocess = clip.load(
+    "ViT-B/16",
+    device=device
+)
 
-
-# =========================
-# 📥 LOAD ONCE (CRITICAL FIX)
-# =========================
-def load_clip():
-    global clip_model, clip_preprocess
-
-    if clip_model is None:
-        import clip
-
-        clip_model, clip_preprocess = clip.load(
-            "ViT-B/16",
-            device=device
-        )
-
-        clip_model.eval()
-        torch.set_num_threads(1)
-
-    return clip_model, clip_preprocess
+clip_model.eval()
+torch.set_num_threads(1)
 
 
 # =========================
-# 🧠 EMBEDDING (DOUBLE CROP + SAFE)
+# 🧠 SIMPLE SAFE EMBEDDING
 # =========================
 def get_embedding(image: Image.Image):
 
-    model, preprocess = load_clip()
-
     image = image.convert("RGB")
 
-    # =========================
-    # ⚡ SAFE DOUBLE CROP (OPTIMIZED)
-    # =========================
-
-    img1 = preprocess(image).unsqueeze(0)
-    img2 = preprocess(image.resize((224, 224))).unsqueeze(0)
+    # ⚡ ONLY ONE CROP (IMPORTANT FOR STABILITY)
+    img = clip_preprocess(image).unsqueeze(0)
 
     with torch.no_grad():
-        v1 = model.encode_image(img1)
-        v2 = model.encode_image(img2)
+        vec = clip_model.encode_image(img)
 
-    # normalize
-    v1 = v1 / v1.norm(dim=-1, keepdim=True)
-    v2 = v2 / v2.norm(dim=-1, keepdim=True)
+    vec = vec / vec.norm(dim=-1, keepdim=True)
 
-    # weighted merge (important for accuracy)
-    vec = (v1 * 0.6) + (v2 * 0.4)
-
-    result = vec.squeeze().tolist()
-
-    return result
+    return vec.squeeze().tolist()
 
 
 # =========================
-# 🏠 HEALTH
+# 🏠 HEALTH CHECK
 # =========================
 @app.get("/")
 def home():
     return {
         "status": "RUNNING 🚀",
-        "model": "CLIP ViT-B/16 DOUBLE-CROP SAFE",
-        "ram": "512MB optimized"
+        "model": "CLIP ViT-B/16 STABLE MODE",
+        "note": "optimized for Render 512MB"
     }
 
 
@@ -111,7 +77,7 @@ async def embed_image(file: UploadFile = File(...)):
         return {
             "embedding": vector,
             "dimension": len(vector),
-            "model": "clip-double-crop-safe"
+            "model": "clip-stable-render"
         }
 
     except Exception as e:
